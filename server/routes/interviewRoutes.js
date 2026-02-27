@@ -3,6 +3,7 @@ const router = express.Router();
 const upload = require('../middlewares/uploadMiddleware');
 const { analyzeResume, analyzeEmotion } = require('../services/mlService');
 const Interview = require('../models/Interview');
+const Groq = require('groq-sdk');
 
 
 // ============================================================
@@ -82,45 +83,31 @@ const generateQuestions = (role) => {
 // ============================================================
 // 🔹 Route 1: Upload Resume & Parse
 // ============================================================
+// ============================================================
+// Route 1: Upload Resume & Parse (UPDATED)
+// ============================================================
 router.post('/upload-resume', upload.single('resume'), async (req, res) => {
     try {
-
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
-        const mlResponse = await analyzeResume(
-            req.file.buffer,
-            req.file.originalname
-        );
-
-        if (!mlResponse || mlResponse.status === 'error') {
-            return res.status(500).json({
-                error: mlResponse?.message || 'ML service error'
-            });
+        const { jobDescription } = req.body;
+        if (!jobDescription) {
+            return res.status(400).json({ error: 'Job description is required' });
         }
 
-        const cleanPrediction = mlResponse.prediction
-            ?.replace(/[^a-zA-Z\s]/g, "")
-            .trim() || "Software Engineer";
-
-        const recommendedCompanies = getRecommendations(cleanPrediction);
-
-        const extractedLength = mlResponse.extracted_length || 1000;
-
-        const atsScore = Math.min(
-            Math.floor((extractedLength / 2000) * 100) + 40,
-            98
+        // Send file and JD to Python Microservice
+        const mlResponse = await analyzeResume(
+            req.file.buffer,
+            req.file.originalname,
+            jobDescription
         );
 
+        // Send real data straight back to React
         res.json({
             message: 'Resume processed successfully',
-            data: {
-                predictedRole: cleanPrediction,
-                extractionLength: extractedLength,
-                atsScore: atsScore,
-                recommendations: recommendedCompanies
-            }
+            data: mlResponse
         });
 
     } catch (error) {
@@ -135,16 +122,22 @@ router.post('/upload-resume', upload.single('resume'), async (req, res) => {
 // ============================================================
 // 🔹 Route 2: Real-time Emotion Detection
 // ============================================================
-router.post('/analyze-frame', upload.single('frame'), async (req, res) => {
+// ============================================================
+// Route 2: Real-time Emotion Detection (UPDATED & BULLETPROOF)
+// ============================================================
+// Using upload.any() prevents the "Unexpected field" crash
+router.post('/analyze-frame', upload.any(), async (req, res) => {
     try {
+        // Because we use upload.any(), Multer puts the file in an array called req.files
+        const file = req.files && req.files.length > 0 ? req.files[0] : null;
 
-        if (!req.file) {
+        if (!file) {
             return res.status(400).json({ error: 'No frame uploaded' });
         }
 
         const mlResponse = await analyzeEmotion(
-            req.file.buffer,
-            req.file.originalname
+            file.buffer,
+            file.originalname || 'frame.jpg'
         );
 
         res.json({
@@ -152,7 +145,7 @@ router.post('/analyze-frame', upload.single('frame'), async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Emotion Analysis Error:", error);
+        console.error("Emotion Analysis Error:", error.message);
         res.status(500).json({
             error: 'Server error analyzing emotion'
         });
@@ -163,14 +156,65 @@ router.post('/analyze-frame', upload.single('frame'), async (req, res) => {
 // ============================================================
 // 🔹 Route 3: Get Interview Questions
 // ============================================================
-router.get('/questions', (req, res) => {
+// ============================================================
+// Route 3: Get Dynamic AI Interview Questions (UPDATED)
+// ============================================================
+// ============================================================
+// Route 3: Get Dynamic AI Interview Questions (Groq/Llama 3)
+// ============================================================
+router.get('/questions', async (req, res) => {
     try {
         const role = req.query.role || 'General Developer';
-        const questions = generateQuestions(role);
+
+        // 1. Check if the API key exists
+        if (!process.env.GROQ_API_KEY) {
+            console.warn("⚠️ No Groq API Key found. Falling back to hardcoded questions.");
+            const fallbackQuestions = generateQuestions(role);
+            return res.json({ data: fallbackQuestions });
+        }
+
+        // 2. Initialize Groq
+        const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+        // 3. Craft the strict prompt
+        const prompt = `You are an expert technical interviewer hiring for a company. 
+        Generate exactly 5 technical interview questions for a candidate applying for the role of "${role}". 
+        Make the questions medium-to-hard difficulty. 
+        Return ONLY a raw JSON array of 5 strings. Do not include markdown formatting, backticks, or the word "json".`;
+
+        // 4. Call the Llama 3 model via Groq
+        const chatCompletion = await groq.chat.completions.create({
+            messages: [
+                {
+                    role: "user",
+                    content: prompt,
+                }
+            ],
+            model: "llama-3.3-70b-versatile", // Lightning fast 8-billion parameter model
+            temperature: 0.5,
+        });
+
+        let responseText = chatCompletion.choices[0]?.message?.content?.trim();
+
+        // 5. Clean up any accidental markdown the AI might have added
+        responseText = responseText.replace(/```json/gi, '').replace(/```/gi, '').trim();
+
+        // 6. Parse the string into a real JavaScript Array
+        let questions;
+        try {
+            questions = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error("Failed to parse Groq response:", responseText);
+            questions = generateQuestions(role); // Fallback if formatting fails
+        }
+
+        // 7. Send the dynamic questions back!
         res.json({ data: questions });
+
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Server error fetching questions' });
+        console.error("Groq AI Generation Error:", error);
+        // Fallback to offline questions if the API request completely fails
+        res.json({ data: generateQuestions(req.query.role || 'General Developer') });
     }
 });
 
