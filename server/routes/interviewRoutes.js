@@ -4,6 +4,7 @@ const router = express.Router();
 const upload = require('../middlewares/uploadMiddleware');
 const { analyzeResume, analyzeEmotion } = require('../services/mlService');
 const Groq = require('groq-sdk');
+const Interview = require('../models/Interview');
 
 // ============================================================
 // 🔹 Fallback Questions (If AI is Offline)
@@ -185,6 +186,45 @@ Return ONLY a valid JSON object with exactly two keys:
             score: 50,
             feedback: "Server error during evaluation."
         });
+    }
+});
+
+// ============================================================
+// 🔹 Route 5: Save Final Interview Result to Database
+// ============================================================
+router.post('/save', async (req, res) => {
+    try {
+        const { userId, jobRole, resumeScore, averageEmotion, confidenceScore, finalHiringProbability } = req.body;
+        
+        const newInterview = new Interview({
+            userId,
+            jobRole,
+            resumeScore,
+            averageEmotion: averageEmotion || "Neutral",
+            confidenceScore,
+            finalHiringProbability
+        });
+
+        await newInterview.save();
+        res.json({ message: "Interview saved successfully", data: newInterview });
+
+    } catch (error) {
+        console.error("Save Interview Error:", error);
+        res.status(500).json({ error: 'Server error saving interview' });
+    }
+});
+
+// ============================================================
+// 🔹 Route 6: Fetch User Interview History
+// ============================================================
+router.get('/history/:userId', async (req, res) => {
+    try {
+        // Find all interviews for this user, sorted by newest first
+        const interviews = await Interview.find({ userId: req.params.userId }).sort({ createdAt: -1 });
+        res.json({ data: interviews });
+    } catch (error) {
+        console.error("Fetch History Error:", error);
+        res.status(500).json({ error: 'Server error fetching history' });
     }
 });
 

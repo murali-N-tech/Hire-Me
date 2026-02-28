@@ -1,92 +1,63 @@
-// ✅ Make sure this is at the very top
-import { useState, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-
-import { AuthProvider, AuthContext } from './context/AuthContext';
-
+import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ResumeUpload from './components/ResumeUpload';
 import InterviewRoom from './components/InterviewRoom';
+import Dashboard from './pages/Dashboard';
 
-
-// ============================================================
-// 🔐 Private Route Wrapper
-// ============================================================
+// PrivateRoute component to protect the Dashboard & Interview routes
 const PrivateRoute = ({ children }) => {
-    const { user } = useContext(AuthContext);
-    return user ? children : <Navigate to="/login" />;
+  const { user, loading } = useAuth();
+  
+  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  return user ? children : <Navigate to="/login" />;
 };
 
-
-// ============================================================
-// 🚀 Updated Dashboard Component (Now Stores Full Resume Data)
-// ============================================================
-const Dashboard = () => {
-
-    // ✅ Hold full resume analysis result
-    const [resumeData, setResumeData] = useState(null);
-
-    return (
-        <div className="pt-24 min-h-screen bg-gray-50 px-4">
-            <div className="max-w-4xl mx-auto space-y-8">
-
-                {/* Pass setter to ResumeUpload */}
-                <ResumeUpload onAnalysisComplete={setResumeData} />
-
-                {/* Only render InterviewRoom when resumeData exists */}
-                {resumeData && (
-                    <InterviewRoom
-                        role={resumeData.predictedRole}
-                        atsScore={resumeData.atsScore}
-                    />
-                )}
-
-            </div>
-        </div>
-    );
-};
-
-
-// ============================================================
-// 📌 App Routes
-// ============================================================
 function AppRoutes() {
-    return (
-        <div className="font-sans text-gray-900">
-            <Navbar />
+  return (
+    <div className="min-h-screen bg-gray-50 font-sans">
+      <Navbar />
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        
+        {/* Protected SaaS Flow */}
+        {/* Protected SaaS Flow */}
+        <Route path="/dashboard" element={
+          <PrivateRoute>
+            <Dashboard />
+          </PrivateRoute>
+        } />
 
-            <Routes>
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-
-                {/* 🔐 Protected Dashboard Route */}
-                <Route
-                    path="/dashboard"
-                    element={
-                        <PrivateRoute>
-                            <Dashboard />
-                        </PrivateRoute>
-                    }
-                />
-            </Routes>
-        </div>
-    );
+        <Route path="/analyze-resume" element={
+          <PrivateRoute>
+            <ResumeUpload />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/interview" element={
+          <PrivateRoute>
+            <InterviewRoom />
+          </PrivateRoute>
+        } />
+      </Routes>
+    </div>
+  );
 }
 
-
-// ============================================================
-// 🌍 Main App Wrapper
-// ============================================================
-export default function App() {
-    return (
-        <Router>
-            <AuthProvider>
-                <AppRoutes />
-            </AuthProvider>
-        </Router>
-    );
+function App() {
+  return (
+    <AuthProvider>
+      <Router>
+        <AppRoutes />
+      </Router>
+    </AuthProvider>
+  );
 }
+
+export default App;

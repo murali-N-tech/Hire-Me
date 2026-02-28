@@ -19,3 +19,6 @@ export const analyzeFrame = (formData) => API.post('/interviews/analyze-frame', 
 export const getQuestions = (role) => API.get('/interviews/questions', { params: { role } });
 export const calculateFinalScore = (payload) => API.post('/interviews/calculate-score', payload);
 export const evaluateAnswer = (payload) => API.post('/interviews/evaluate-answer', payload);
+// 🔥 NEW: Save and Fetch History routes
+export const saveInterviewResult = (payload) => API.post('/interviews/save', payload);
+export const getInterviewHistory = (userId) => API.get(`/interviews/history/${userId}`);
