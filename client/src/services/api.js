@@ -18,3 +18,4 @@ export const uploadResume = (formData) => API.post('/interviews/upload-resume', 
 export const analyzeFrame = (formData) => API.post('/interviews/analyze-frame', formData);
 export const getQuestions = (role) => API.get('/interviews/questions', { params: { role } });
 export const calculateFinalScore = (payload) => API.post('/interviews/calculate-score', payload);
+export const evaluateAnswer = (payload) => API.post('/interviews/evaluate-answer', payload);
